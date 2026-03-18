@@ -488,11 +488,18 @@ class DerbyMiddleware:
         heat = self.current_heat
 
         try:
-            # MA payload layout (after the 3-byte prefix + 2-byte command = 5 bytes):
-            # The original code sliced data[17:-1] on the raw TCP buffer.
-            # With the frame parser, payload[0:3] is the prefix \x00\x00\x03
-            # and payload[3:5] is the command 'MA', so result blocks start at payload[5:].
-            blocks = payload[5:]
+            # MA payload layout:
+            #   payload[0:3]   prefix \x00\x00\x03
+            #   payload[3:5]   command 'MA'
+            #   payload[5:11]  MA header (6 bytes of match/session metadata)
+            #   payload[11:]   result blocks, 8 bytes each
+            #
+            # The original code used data[17:-1] on the *raw TCP frame*.
+            # The frame contributes 6 bytes before the payload (header+checksum+length),
+            # so raw offset 17 = frame offset 6 + payload offset 11.
+            # We were incorrectly starting at payload[5:], skipping only the prefix+command
+            # and landing inside the MA header — producing garbage lane/place/time values.
+            blocks = payload[11:]
 
             post_payload = {
                 'action': 'timer-message',
